@@ -1,57 +1,84 @@
-const SIZE: (usize, usize) = (30, 15); // (x, y)
+//const SIZE: (usize, usize) = (200,100); // (x, y)
 const START_POS: (usize, usize) = (0, 0); // (x, y)
 
-fn draw_grid(grid: [[i32; SIZE.0*2+1]; SIZE.1*2+1], mode: i32) {
+fn draw_grid(old_grid: Vec<Vec<i32>>, grid: Vec<Vec<i32>>, mode: i32) {
     //goto 0,0
-    print!("\x1B[{};{}H", 0, 0);
-    for row in grid.iter() {
-        for col in row.iter() {
-            match mode {
+    let mut print_buffer = String::new();
+    let mut jump = false;
+
+    print_buffer += format!("\x1B[{};{}H", 1, 1).as_str();
+
+    for y in 0..grid.len() {
+        for x in 0..grid[0].len() {
+            let col = grid[y][x];
+            let old_col = old_grid[y][x];
+            let chr = match mode {
                 0 => {//making the maze
                     match col {
-                        0 => print!("█"),
-                        1 => print!("█"),
-                        2 => print!("."),
-                        3 => print!("#"),
-                        4 => print!(" "),
-                        _ => print!(" "),
+                        0 => "█",
+                        1 => "█",
+                        2 => "#",
+                        3 => "#",
+                        4 => " ",
+                        _ => " ",
                     }
                 },
                 1 => {//floodfilling
                     match col {
-                        0 => print!(" "),
-                        1 => print!("█"),
-                        2 => print!("#"),
-                        3 => print!("."),
-                        4 => print!(" "),
-                        _ => print!(" "),
+                        0 => " ",
+                        1 => "█",
+                        2 => "#",
+                        3 => "#",
+                        4 => " ",
+                        _ => " ",
                     }
                 },
                 2 => {//removing dead ends
                     match col {
-                        0 => print!(" "),
-                        1 => print!("█"),
-                        2 => print!("#"),
-                        3 => print!("."),
-                        4 => print!(" "),
-                        _ => print!(" "),
+                        0 => " ",
+                        1 => "█",
+                        2 => "#",
+                        3 => "#",
+                        4 => " ",
+                        _ => " ",
                     }
                 },
                 3 => {//animating the ant (A) moving from start to end
                     match col {
-                        0 => print!(" "),
-                        1 => print!("█"),
-                        2 => print!("."),
-                        3 => print!(" "),
-                        4 => print!("A"),
-                        _ => print!(" "),
+                        0 => " ",
+                        1 => "█",
+                        2 => "#",
+                        3 => " ",
+                        4 => "A",
+                        -1 => ".",
+                        _ => " ",
                     }
                 },
-                _ => println!("Error"),
+                4 => {//animating the ant (A) moving from start to end
+                    match col {
+                        0 => " ",
+                        1 => "█",
+                        2 => "#",
+                        3 => " ",
+                        4 => "A",
+                        5 => ".",
+                        _ => " ",
+                    }
+                },
+                _ => "?",
+            };
+            if col != old_col {
+                if jump {
+                    print_buffer += format!("\x1B[{};{}H", y+1, x+1).as_str();
+                }
+                print_buffer += chr;
+            } else {
+                jump = true;
             }
         }
-        println!();
+        jump = true;
     }
+    println!("{}", print_buffer);
 }
 
 
@@ -60,7 +87,8 @@ use std::thread;
 
 use rand::{thread_rng, seq::SliceRandom};
 
-
+//termion for screen size
+use termion::terminal_size;
 
 
 
@@ -78,7 +106,10 @@ fn main() {
     6 # # # # # #
      */
 
-    let mut grid: [[i32; SIZE.0*2+1]; SIZE.1*2+1] = [[1; SIZE.0*2+1]; SIZE.1*2+1];
+    //terminal size
+    let SIZE: (usize, usize) = ((terminal_size().unwrap().0 as usize-2)/2, (terminal_size().unwrap().1 as usize-2)/2);
+    let mut reset_grid: Vec<Vec<i32>> = vec![vec![10; SIZE.0*2+1]; SIZE.1*2+1];
+    let mut grid: Vec<Vec<i32>> = vec![vec![1; SIZE.0*2+1]; SIZE.1*2+1];
     for y in 0..SIZE.1 {
         for x in 0..SIZE.0 {
             grid[y*2+1][x*2+1] = 0;
@@ -92,8 +123,12 @@ fn main() {
     let mut done_with_generation = false;
     let mut max_depth_reached: i32 = 0;
     let mut max_depth_reached_pos: (usize, usize) = START_POS;
-    
+    let mut i = 0;
+    let mut old_grid = grid.clone();
+    draw_grid(reset_grid.clone(), grid.clone(), 0);
     while done_with_generation == false {
+        
+        i += 1;
         let mut attempted_directions: Vec<i32> = vec![0, 1, 2, 3];
         attempted_directions.shuffle(&mut thread_rng());
         
@@ -223,14 +258,33 @@ fn main() {
             max_depth_reached = depth;
             max_depth_reached_pos = ant_pos;
         }
-        let mut temp_grid = grid;
-        temp_grid[ant_pos.1][ant_pos.0] = 3;
-        draw_grid(temp_grid, 0);
-        println!("{}", depth);
-        thread::sleep(std::time::Duration::from_millis(10));
+        if i % 5 == 0 {
+            draw_grid(old_grid, grid.clone(), 0);
+            old_grid = grid.clone();
+            //println!("Creating maze, current depth: {}                                           ", depth);
+            //thread::sleep(std::time::Duration::from_millis(10));
+        }
+        //println!("Creating maze, current depth: {}                                           ", depth);
+        //thread::sleep(std::time::Duration::from_millis(10));
     }
+    //set max depth reached pos to the bottom right corner of maze
+    max_depth_reached_pos = (SIZE.0*2-1, SIZE.1*2-1);
+    //println!("Max depth reached: {} at {:?}, floodfilling to find optimum path", max_depth_reached, max_depth_reached_pos);
+    
+    /*
+    let amogus: [[i32; 4]; 4] = [
+        [0, 0, 0, 1],
+        [1, 1, 0, 0],
+        [0, 0, 0, 0],
+        [0, 1, 0, 1]
+    ];
 
-    println!("Max depth reached: {} at {:?}", max_depth_reached, max_depth_reached_pos);
+    for x in 0..4 {
+        for y in 0..4 {
+            grid[y+SIZE.1][x+SIZE.0] = amogus[y as usize][x as usize];
+        }
+    }
+    */
 
     for y in 0..SIZE.1*2+1 {
         for x in 0..SIZE.0*2+1 {
@@ -247,33 +301,36 @@ fn main() {
 
     grid[START_POS.1+1][START_POS.0+1] = 2;
 
-    draw_grid(grid, 0);
-
-    let mut new_grid = grid;
+    let mut new_grid = grid.clone();
     //now loop over the whole thing with a floodfill from the start until the end pos gets filled
     while grid[max_depth_reached_pos.1][max_depth_reached_pos.0] != 2 {//the end will turn from 3 to 4, normal filled cells will go from 0 to 2
-        for y in 0..SIZE.1*2+1 {
-            for x in 0..SIZE.0*2+1 {
+        i += 1;
+        for y in 1..SIZE.1*2 {
+            for x in 1..SIZE.0*2 {
                 if grid[y][x] == 0 && (
-                    (y > 0 && grid[y-1][x] == 2) ||
-                    (y < SIZE.1*2 && grid[y+1][x] == 2) ||
-                    (x > 0 && grid[y][x-1] == 2) ||
-                    (x < SIZE.0*2 && grid[y][x+1] == 2)
+                    (grid[y-1][x] == 2) ||
+                    (grid[y+1][x] == 2) ||
+                    (grid[y][x-1] == 2) ||
+                    (grid[y][x+1] == 2)
                 ) {
                     new_grid[y][x] = 2;
                 }
             }
         }
-        grid = new_grid;
-        draw_grid(grid, 1);
-        thread::sleep(std::time::Duration::from_millis(10));
+        if i % 1 == 0 {    
+            draw_grid(grid.clone(), new_grid.clone(), 1);
+            //thread::sleep(std::time::Duration::from_millis(1));
+        }
+        grid = new_grid.clone();
+        //println!("Retracting dead ends to isolate correct path...             ");
     }
     grid[max_depth_reached_pos.1][max_depth_reached_pos.0] = 3;
     grid[START_POS.1+1][START_POS.0+1] = 3;
 
     //now loop over again, this time setting any cells with one cardinal neighbours set to 2, to 0
-    new_grid = grid;
+    new_grid = grid.clone();
     loop {
+        i += 1;
         for y in 0..SIZE.1*2+1 {
             for x in 0..SIZE.0*2+1 {
                 if grid[y][x] == 2 && (
@@ -289,26 +346,32 @@ fn main() {
         if grid == new_grid {
             break;
         };
-        grid = new_grid;
-        draw_grid(grid, 2);
-        thread::sleep(std::time::Duration::from_millis(20));
+        if i%1 == 0 {
+            draw_grid(grid.clone(), new_grid.clone(), 2);
+        }
+        grid = new_grid.clone();
+        //thread::sleep(std::time::Duration::from_millis(20));
     }
 
     grid[max_depth_reached_pos.1][max_depth_reached_pos.0] = 2;
 
-    draw_grid(grid, 1);
+    draw_grid(reset_grid.clone(), grid.clone(), 1);
+    //println!("Optimum Path Found! Animating solve.");
     thread::sleep(std::time::Duration::from_millis(500));
-    draw_grid(grid, 3);
+    draw_grid(reset_grid.clone(), grid.clone(), 4);
     thread::sleep(std::time::Duration::from_millis(500));
-    draw_grid(grid, 1);
+    draw_grid(reset_grid.clone(), grid.clone(), 1);
     thread::sleep(std::time::Duration::from_millis(500));
-    draw_grid(grid, 3);
+    draw_grid(reset_grid.clone(), grid.clone(), 4);
     thread::sleep(std::time::Duration::from_millis(500));
 
     //now, animate an ant (represented by a cell set to 4) moving from the start to the end
     let mut ant_pos: (usize, usize) = (START_POS.0+1, START_POS.1+1);
     //the algorithm will consist of the ant moving to an adjacent cell that is set to 2, setting the initial cell to 0, and repeating until the end is reached
+    let mut old_grid = grid.clone();
     while ant_pos != max_depth_reached_pos {
+        old_grid = grid.clone();
+        i += 1;
         let prev_ant_pos = ant_pos;
         if grid[ant_pos.1][ant_pos.0+1] >= 2 {
             ant_pos.0 += 1;
@@ -319,10 +382,13 @@ fn main() {
         } else if grid[ant_pos.1-1][ant_pos.0] >= 2 {
             ant_pos.1 -= 1;
         }
-        grid[prev_ant_pos.1][prev_ant_pos.0] = 0;
+        grid[prev_ant_pos.1][prev_ant_pos.0] = -1;
         grid[ant_pos.1][ant_pos.0] = 4;
-        draw_grid(grid, 3);
-        thread::sleep(std::time::Duration::from_millis(10));
+        if i%1 == 0{
+            draw_grid(old_grid.clone(), grid.clone(), 3);
+            //thread::sleep(std::time::Duration::from_millis(1));
+        }
+        
     }
     
 }
