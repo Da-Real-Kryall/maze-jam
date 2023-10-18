@@ -1,7 +1,7 @@
 //const SIZE: (usize, usize) = (200,100); // (x, y)
 const START_POS: (usize, usize) = (0, 0); // (x, y)
-const STEP: usize = 1;
-const DELAY_MS: u64 = 5;
+const STEP: usize = 50;
+const DELAY_MS: u64 = 0;
 
 fn draw_grid(old_grid: Vec<Vec<i32>>, grid: Vec<Vec<i32>>, mode: i32) {
     //goto 0,0
