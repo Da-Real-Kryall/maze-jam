@@ -7,70 +7,77 @@ fn draw_grid(old_grid: Vec<Vec<i32>>, grid: Vec<Vec<i32>>, mode: i32) {
     //goto 0,0
     let mut print_buffer = String::new();
     let mut jump = false;
+    let mut currently_flashing: bool = false;
 
     print_buffer += format!("\x1B[{};{}H", 1, 1).as_str();
 
-    for y in 0..grid.len() {
+    for y in 0..grid.len()/2 {
         for x in 0..grid[0].len() {
-            let col = grid[y][x];
-            let old_col = old_grid[y][x];
-            let mut chr = match mode {
-                0 => {//making the maze
-                    match col {
-                        0 => "█",
-                        1 => "█",
-                        2 => "#",
-                        3 => "#",
-                        4 => " ",
-                        _ => "#",
+            let mut halve_colours: [usize; 2] = [0,0]; //top, bottom
+            let mut old_halve_colours: [usize; 2] = [0,0]; //top, bottom
+            for dy in 0..=1 {
+                
+                for i in 0..=1 {
+                    let col;
+                    if i == 0 {
+                        col = grid[2*y+dy][x];
+                    } else {
+                        col = old_grid[2*y+dy][x];
                     }
-                },
-                1 => {//floodfilling
-                    match col {
-                        0 => " ",
-                        1 => "█",
-                        2 => "#",
-                        3 => "#",
-                        4 => " ",
-                        _ => " ",
+                    let chr = match mode { //palette: "█#. " -> 3210
+                        1..=2 => {//floodfilling and removing dead ends
+                            match col {
+                                1 => 3,
+                                2..=3 => 2,
+                                _ => 0,
+                            }
+                        },
+                        3..=4 => {//animating the ant (A) moving from start to end
+                            match col {
+                                1 => 3,
+                                2 => 1,
+                                4..=5 => 2,
+                                _ => 0
+                            }
+                        },
+                        _ => {//making the maze (0)
+                            match col {
+                                0..=1 => 3,
+                                4 => 0,
+                                _ => 2
+                            }
+                        },
+                    };
+                    if i == 0 {
+                        halve_colours[dy] = chr;
+                    } else {
+                        old_halve_colours[dy] = chr;
                     }
-                },
-                2 => {//removing dead ends
-                    match col {
-                        0 => " ",
-                        1 => "█",
-                        2 => "#",
-                        3 => "#",
-                        4 => " ",
-                        _ => " ",
-                    }
-                },
-                3 => {//animating the ant (A) moving from start to end
-                    match col {
-                        0 => " ",
-                        1 => "█",
-                        2 => ".",
-                        3 => " ",
-                        4 => "A",
-                        5 => "#",
-                        _ => " ",
-                    }
-                },
-                _ => "?",
-            };
-            //if x == 0 && y == 1 || x == grid[0].len() - 1 && y == grid.len() - 2 {
-            //    chr = " ";
-            //}
-            if col != old_col {
-                if jump {
-                    print_buffer += format!("\x1B[{};{}H", y+1, x+1).as_str();
                 }
-                print_buffer += chr;
-            } else {
-                jump = true;
+            };
+            //256 colour mode colours for black, dark grey, light grey, white
+            let palette = [16, 240, 249, 231];
+
+            if halve_colours != old_halve_colours {
+                print_buffer += format!("\x1B[{};{}H\x1B[0m", y+1, x+1).as_str();
+                //make it flash if mode is 4 and the cell is light grey
+                //if mode == 4 && halve_colours[1] == 2 {
+                //    if currently_flashing == false {
+                //        print_buffer += "\x1B[5m";
+                //        currently_flashing = true;
+                //    } else {
+                //        print_buffer += "\x1B[0m";
+                //        currently_flashing = false;
+                //    }
+                //}
+                //set foreground colour to the top half colour
+                print_buffer += format!("\x1B[38;5;{}m", palette[halve_colours[0]]).as_str();
+                //set background colour to the bottom half colour
+                print_buffer += format!("\x1B[48;5;{}m", palette[halve_colours[1]]).as_str();
+                //print a top half block character
+                print_buffer += format!("▀").as_str();
             }
         }
-        jump = true;
     }
     println!("{}", print_buffer);
 }
@@ -89,6 +96,11 @@ use termion::terminal_size;
 fn main() {
     //clear the screen
     print!("\x1B[2J");
+    //hide cursor
+    print!("\x1B[?25l");
+
+
+
     //on the grid, 0 is unexplored, 1 is a wall, 2 is explored
     /*
     0 1 2 3 4 5 6
@@ -101,7 +113,7 @@ fn main() {
      */
 
     //terminal size
-    let SIZE: (usize, usize) = ((terminal_size().unwrap().0 as usize-2)/2, (terminal_size().unwrap().1 as usize-2)/2);
+    let SIZE: (usize, usize) = ((terminal_size().unwrap().0 as usize-2)/2, (((terminal_size().unwrap().1*2)/2) as usize-2));
     let mut reset_grid: Vec<Vec<i32>> = vec![vec![10; SIZE.0*2+1]; SIZE.1*2+1];
     let mut grid: Vec<Vec<i32>> = vec![vec![1; SIZE.0*2+1]; SIZE.1*2+1];
     for y in 0..SIZE.1 {
@@ -110,6 +122,23 @@ fn main() {
         }
     }
     grid[START_POS.1+1][START_POS.0+1] = 2;
+
+    //at the very right of the screen, print a full block character on every line
+    for y in 0..SIZE.1 {
+        print!("\x1B[{};{}H", y+1, SIZE.0*2+1);
+        print!("█");
+    }
+
+    //at the very bottom of the screen, print an upper half block character
+    //first goto the bottom
+    println!("\x1B[{};{}H", SIZE.1, 1);
+    //set colour to white
+    print!("\x1B[38;5;231m");
+    //then print the characters all along
+    for x in 0..SIZE.0*2 {
+        print!("▀");
+    }
+    print!("▀");
 
 
     let mut ant_pos: (usize, usize) = (START_POS.0+1, START_POS.1+1);
@@ -269,8 +298,8 @@ fn main() {
     //set max depth reached pos to the bottom right corner of maze
     max_depth_reached_pos = (SIZE.0*2-1, SIZE.1*2-1);
 
-    //delay 5 seconds
-    thread::sleep(std::time::Duration::from_millis(5000));
+
+    //thread::sleep(std::time::Duration::from_millis(2000));
 
     //println!("Max depth reached: {} at {:?}, floodfilling to find optimum path", max_depth_reached, max_depth_reached_pos);
     
@@ -399,6 +428,7 @@ fn main() {
         
     }
     //move to bottom of screen and print an ln
+    draw_grid(reset_grid.clone(), grid.clone(), 4);
     print!("\x1B[{};{}H", SIZE.1*2+2, 1);
     
 }
